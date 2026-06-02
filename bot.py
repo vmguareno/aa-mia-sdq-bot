@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_KEY = os.getenv("AVIATIONSTACK_KEY")
 CHAT_ID = "1026439077"
 
-bot = Bot(BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 tz = pytz.timezone("America/Santo_Domingo")
 
 def get_flights(dep, arr):
