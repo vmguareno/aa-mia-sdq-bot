@@ -59,3 +59,6 @@ async def main():
     await bot.send_message(chat_id=CHAT_ID, text=msg[:4000])
 
 asyncio.run(main())
+import time
+while True:
+    time.sleep(300)
