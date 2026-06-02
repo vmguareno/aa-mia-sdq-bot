@@ -14,21 +14,26 @@ bot=Bot(token=BOT_TOKEN)
 
 tz=ZoneInfo("America/Santo_Domingo")
 
+STATUS_MAP={
+    "SCHEDULED":"SCHD",
+    "ACTIVE":"ACTV",
+    "LANDED":"LND",
+    "DELAYED":"DLYD",
+    "CANCELLED":"CNCL"
+}
 
-def convert_time(t):
+
+def convert(t):
 
     if not t:
         return None
 
     try:
-
         utc=datetime.fromisoformat(
             t.replace("Z","+00:00")
         )
 
-        rd=utc.astimezone(tz)
-
-        return rd
+        return utc.astimezone(tz)
 
     except:
         return None
@@ -37,27 +42,9 @@ def convert_time(t):
 def fmt(dt):
 
     if not dt:
-        return "N/A"
+        return "----"
 
-    return dt.strftime("%I:%M %p AST")
-
-
-def delay_text(std,etd):
-
-    if not std or not etd:
-        return ""
-
-    diff=int(
-        (etd-std).total_seconds()/60
-    )
-
-    if diff > 5:
-        return f"\n🔴 Delay: +{diff} min"
-
-    elif diff < -5:
-        return f"\n🟢 Early: {diff} min"
-
-    return ""
+    return dt.strftime("%H%M")
 
 
 def get_flights(dep,arr):
@@ -67,16 +54,7 @@ def get_flights(dep,arr):
     r=requests.get(url).json()
 
     flights=[]
-
     seen=set()
-
-    counts={
-        "SCHEDULED":0,
-        "ACTIVE":0,
-        "LANDED":0,
-        "DELAYED":0,
-        "CANCELLED":0
-    }
 
     for f in r.get("data",[]):
 
@@ -89,132 +67,104 @@ def get_flights(dep,arr):
 
         flight=f.get(
             "flight",{}
-        ).get("iata","N/A")
-
-        status=f.get(
-            "flight_status",
-            "UNKNOWN"
-        ).upper()
+        ).get("iata","AA---"
+        )
 
         if flight in seen:
             continue
 
         seen.add(flight)
 
-        if status in counts:
-            counts[status]+=1
-
-        icons={
-            "SCHEDULED":"🟢 SCHEDULED",
-            "ACTIVE":"🟡 ACTIVE",
-            "LANDED":"✅ LANDED",
-            "DELAYED":"🔴 DELAYED",
-            "CANCELLED":"❌ CANCELLED"
-        }
-
-        status_display=icons.get(
-            status,status
+        status=STATUS_MAP.get(
+            f.get(
+                "flight_status",
+                "UNKNOWN"
+            ).upper(),
+            "UNKN"
         )
 
-        std=convert_time(
+        std=convert(
             f.get("departure",{})
             .get("scheduled")
         )
 
-        etd=convert_time(
+        etd=convert(
             f.get("departure",{})
             .get("estimated")
         )
 
-        sta=convert_time(
+        sta=convert(
             f.get("arrival",{})
             .get("scheduled")
         )
 
-        eta=convert_time(
+        eta=convert(
             f.get("arrival",{})
             .get("estimated")
         )
 
-        aircraft=(
-            f.get("aircraft",{})
-            .get("registration")
-        )
+        if status=="LND":
 
-        msg=f"""
-✈️ {flight} | {status_display}
-
-STD {fmt(std)}
-ETD {fmt(etd)}
-
-STA {fmt(sta)}
-ETA {fmt(eta)}
+            row=f"""
+{flight:<7}{status}
+OUT{fmt(etd)} IN{fmt(eta)}
 """
 
-        msg += delay_text(
-            std,
-            etd
-        )
+        elif status=="ACTV":
 
-        if aircraft:
-            msg += (
-                f"\nAircraft: {aircraft}"
-            )
+            row=f"""
+{flight:<7}{status}
+OUT{fmt(etd)} ETA{fmt(eta)}
+"""
 
-        flights.append(msg)
+        else:
 
-    return flights,counts
+            row=f"""
+{flight:<7}{status}
+STD{fmt(std)} ETD{fmt(etd)}
+STA{fmt(sta)} ETA{fmt(eta)}
+"""
+
+        flights.append(row)
+
+    return "".join(flights)
 
 
 async def main():
 
-    now=datetime.now(
-        tz
-    ).strftime(
-        "%d-%b-%Y | %I:%M %p AST"
-    )
+    now=datetime.now(tz)
 
-    mia,mc=get_flights(
+    hdr=now.strftime(
+        "%d%b%y/%H%MAST"
+    ).upper()
+
+    msg=f"""{hdr}   RGGSDQ AA OPS
+
+ARR MIA-SDQ
+────────────────────
+"""
+
+    msg += get_flights(
         "MIA",
         "SDQ"
     )
 
-    sdq,sc=get_flights(
+    msg += """
+
+────────────────────
+DEP SDQ-MIA
+────────────────────
+"""
+
+    msg += get_flights(
         "SDQ",
         "MIA"
     )
 
-    msg=f"""📅 {now}
+    msg += f"""
 
-🇺🇸 AMERICAN AIRLINES — LIVE STATUS
-
-🛬 MIA→SDQ
-🟢 Scheduled: {mc['SCHEDULED']}
-🟡 Active: {mc['ACTIVE']}
-✅ Landed: {mc['LANDED']}
-🔴 Delayed: {mc['DELAYED']}
-
-🛫 SDQ→MIA
-🟢 Scheduled: {sc['SCHEDULED']}
-🟡 Active: {sc['ACTIVE']}
-✅ Landed: {sc['LANDED']}
-🔴 Delayed: {sc['DELAYED']}
-
-━━━━━━━━━━━━━━
-🛬 MIA → SDQ
-━━━━━━━━━━━━━━
+LAST UPDATE {now.strftime("%H%MAST")}
 """
-
-    msg+="\n".join(mia)
-
-    msg += """
-
-━━━━━━━━━━━━━━
-🛫 SDQ → MIA
-━━━━━━━━━━━━━━
-"""
-
-    msg+="\n".join(sdq)
 
     await bot.send_message(
         chat_id=CHAT_ID,
